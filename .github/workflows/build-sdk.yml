@@ -1,4 +1,4 @@
-name: Build uSteer with ImmortalWrt SDK
+name: Build uSteer for ImmortalWrt
 
 on:
   workflow_dispatch:
@@ -10,48 +10,48 @@ jobs:
     runs-on: ubuntu-22.04
     
     steps:
-    - name: Checkout usteer source
+    - name: Checkout ImmortalWrt source
       run: |
-        git clone https://git.openwrt.org/project/usteer.git usteer-source
+        git clone https://github.com/immortalwrt/immortalwrt.git
+        cd immortalwrt
+        git checkout v24.10.4
         
-    - name: Find and Download SDK
+    - name: Install build dependencies
       run: |
-        # 获取可用的 SDK 文件列表
-        SDK_FILES=$(curl -s https://downloads.immortalwrt.org/releases/24.10.4/targets/mediatek/filogic/ | grep -o 'href="[^"]*tar.xz"' | sed 's/href="//' | sed 's/"//')
+        sudo apt update
+        sudo apt install -y build-essential clang flex bison g++ gawk gcc-multilib \
+        g++-multilib gettext git libncurses5-dev libssl-dev python3 python3-selinux \
+        python3-pip rsync unzip zlib1g-dev file wget curl
         
-        if [ -z "$SDK_FILES" ]; then
-          echo "错误：找不到 SDK 文件"
-          exit 1
-        fi
+    - name: Update feeds and add usteer
+      run: |
+        cd immortalwrt
+        ./scripts/feeds update -a
         
-        # 选择第一个找到的 SDK 文件
-        SDK_FILE=$(echo "$SDK_FILES" | head -1)
-        echo "找到 SDK 文件: $SDK_FILE"
+        # 手动添加最新的 usteer
+        rm -rf package/network/services/usteer
+        git clone https://git.openwrt.org/project/usteer.git package/network/services/usteer
         
-        # 下载 SDK
-        wget "https://downloads.immortalwrt.org/releases/24.10.4/targets/mediatek/filogic/$SDK_FILE"
-        
-        # 解压 SDK
-        tar -xf *.tar.xz
-        mv immortalwrt-sdk-*-Linux-x86_64 immortalwrt-sdk
+    - name: Configure build
+      run: |
+        cd immortalwrt
+        cat > .config << 'EOF'
+CONFIG_TARGET_mediatek=y
+CONFIG_TARGET_mediatek_filogic=y
+CONFIG_TARGET_mediatek_filogic_DEVICE_netcore_n60-pro=y
+CONFIG_PACKAGE_usteer=m
+EOF
+        make defconfig
         
     - name: Build usteer package
       run: |
-        # 复制 usteer 源码到 SDK
-        rm -rf immortalwrt-sdk/package/network/services/usteer
-        cp -r usteer-source immortalwrt-sdk/package/network/services/usteer
+        cd immortalwrt
+        make package/network/services/usteer/compile -j$(nproc) V=s
         
-        cd immortalwrt-sdk
-        # 更新 feeds
-        ./scripts/feeds update -a
-        
-        # 编译 usteer
-        make package/network/services/usteer/compile V=s
-        
-    - name: Upload built packages
+    - name: Upload packages
       uses: actions/upload-artifact@v4
       with:
         name: usteer-packages
         path: |
-          immortalwrt-sdk/bin/packages/aarch64_cortex-a53/base/usteer*
+          immortalwrt/bin/packages/aarch64_cortex-a53/base/usteer*
         retention-days: 30
