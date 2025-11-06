@@ -1,4 +1,4 @@
-name: Build latest usteer for N60pro
+name: Build usteer for N60pro (ImmortalWrt 24.10.4)
 
 on:
   workflow_dispatch:
@@ -10,50 +10,60 @@ jobs:
       TARGET: "aarch64_cortex-a53"
       PROFILE: "mt7986"
     steps:
-      - name: Checkout ImmortalWrt SDK
-        run: |
-          wget -q https://github.com/immortalwrt/immortalwrt/releases/download/v24.10.4/ImmortalWrt-SDK-24.10.4-aarch64_cortex-a53.tar.xz
-          tar -xf ImmortalWrt-SDK-24.10.4-aarch64_cortex-a53.tar.xz
-          mv ImmortalWrt-SDK-24.10.4-aarch64_cortex-a53 sdk
+      - name: Checkout ImmortalWrt 24.10.4
+        uses: actions/checkout@v3
+        with:
+          repository: immortalwrt/immortalwrt
+          ref: v24.10.4
+          path: immortalwrt
 
-      - name: Setup environment
+      - name: Install dependencies
         run: |
-          cd sdk
-          export STAGING_DIR=$(pwd)/staging_dir
-          export PATH=$STAGING_DIR/toolchain-aarch64_cortex-a53_gcc-13.3.0_musl/bin:$PATH
+          sudo apt update
+          sudo apt install -y build-essential libncurses5-dev zlib1g-dev gawk git ccache gettext libssl-dev xsltproc unzip python3 python3-distutils wget subversion
+
+      - name: Update feeds
+        run: |
+          cd immortalwrt
           export TERM=dumb
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
 
       - name: Clone latest usteer package
         run: |
-          cd sdk/package
+          cd immortalwrt/package
           rm -rf usteer
           git clone git://git.openwrt.org/project/usteer.git
 
       - name: Configure minimal build for usteer
         run: |
-          cd sdk
+          cd immortalwrt
           export TERM=dumb
-          cp defconfig .config
-          # 设置目标架构和设备
+          make defconfig
           echo "CONFIG_TARGET_aarch64_cortex-a53=y" >> .config
           echo "CONFIG_PACKAGE_usteer=y" >> .config
           echo "CONFIG_PACKAGE_luci-app-usteer=y" >> .config
           echo "CONFIG_PACKAGE_luci-i18n-usteer-zh-cn=y" >> .config
           make oldconfig
 
-      - name: Compile usteer only
+      - name: Build toolchain (slow, required)
         run: |
-          cd sdk
+          cd immortalwrt
           export TERM=dumb
-          # 多线程编译，加快速度
-          make -j$(nproc) package/usteer/{compile,install} V=s
+          make -j2 toolchain/install V=s
+
+      - name: Compile usteer packages
+        run: |
+          cd immortalwrt
+          export TERM=dumb
+          make -j2 package/usteer/{compile,install} V=s
 
       - name: Upload IPK artifacts
         uses: actions/upload-artifact@v4
         with:
           name: usteer-ipk
           path: |
-            sdk/bin/packages/*/base/usteer_*.ipk
-            sdk/bin/packages/*/luci/luci-app-usteer_*.ipk
-            sdk/bin/packages/*/luci/luci-i18n-usteer-zh-cn_*.ipk
+            immortalwrt/bin/packages/*/base/usteer_*.ipk
+            immortalwrt/bin/packages/*/luci/luci-app-usteer_*.ipk
+            immortalwrt/bin/packages/*/luci/luci-i18n-usteer-zh-cn_*.ipk
           retention-days: 7
