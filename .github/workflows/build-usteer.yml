@@ -7,8 +7,8 @@ jobs:
   build:
     runs-on: ubuntu-22.04
     env:
-      TARGET: "aarch64_cortex-a53"   # N60 Pro CPU 架构
-      PROFILE: "mt7986"              # 路由器型号
+      TARGET: "aarch64_cortex-a53"
+      PROFILE: "mt7986"
     steps:
       - name: Checkout ImmortalWrt 24.10.4
         uses: actions/checkout@v3
@@ -37,7 +37,8 @@ jobs:
       - name: Configure minimal build for usteer
         run: |
           cd immortalwrt
-          # 默认配置
+          export TERM=dumb
+          # 使用默认配置
           make defconfig
           # 设置目标架构
           sed -i 's/TARGET_ARCH:=x86_64/TARGET_ARCH:=aarch64/' .config
@@ -46,17 +47,19 @@ jobs:
           echo "CONFIG_PACKAGE_usteer=y" >> .config
           echo "CONFIG_PACKAGE_luci-app-usteer=y" >> .config
           echo "CONFIG_PACKAGE_luci-i18n-usteer-zh-cn=y" >> .config
-          # 禁用其它包以加快编译
-          sed -i '/CONFIG_PACKAGE_/!d' .config
+          # 使用 oldconfig 避免 menuconfig 弹出
+          make oldconfig
 
       - name: Build toolchain
         run: |
           cd immortalwrt
+          export TERM=dumb
           make toolchain/install -j$(nproc)
 
       - name: Compile usteer only
         run: |
           cd immortalwrt
+          export TERM=dumb
           make -j$(nproc) package/usteer/{compile,install} V=s
 
       - name: Upload IPK artifacts
