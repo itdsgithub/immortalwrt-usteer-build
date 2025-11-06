@@ -1,0 +1,57 @@
+name: Build usteer for ImmortalWrt
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    env:
+      TARGET: "aarch64_cortex-a53"   # N60 Pro CPU 架构
+      PROFILE: "mt7986"              # 路由器型号
+    steps:
+      - name: Checkout ImmortalWrt
+        uses: actions/checkout@v3
+        with:
+          repository: https://github.com/immortalwrt/immortalwrt.git
+          path: immortalwrt
+
+      - name: Setup dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y build-essential libncurses5-dev zlib1g-dev gawk git ccache gettext libssl-dev xsltproc unzip python3 python3-distutils wget subversion
+
+      - name: Update feeds
+        run: |
+          cd immortalwrt
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+      - name: Clone usteer package
+        run: |
+          cd immortalwrt/package
+          git clone git://git.openwrt.org/project/usteer.git
+
+      - name: Configure build
+        run: |
+          cd immortalwrt
+          # 清空上次配置
+          make defconfig
+          # 启用 usteer 主程序、LuCI 和中文语言包
+          echo "CONFIG_PACKAGE_usteer=y" >> .config
+          echo "CONFIG_PACKAGE_luci-app-usteer=y" >> .config
+          echo "CONFIG_PACKAGE_luci-i18n-usteer-zh-cn=y" >> .config
+
+      - name: Build usteer packages
+        run: |
+          cd immortalwrt
+          make -j$(nproc) package/usteer/{compile,install} V=s
+
+      - name: Upload IPK artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: usteer-ipk
+          path: |
+            immortalwrt/bin/packages/*/base/usteer_*.ipk
+            immortalwrt/bin/packages/*/luci/luci-app-usteer_*.ipk
+            immortalwrt/bin/packages/*/luci/luci-i18n-usteer-zh-cn_*.ipk
