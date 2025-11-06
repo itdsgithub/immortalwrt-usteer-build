@@ -25,6 +25,9 @@ jobs:
       run: |
         cd immortalwrt
         ./scripts/feeds update -a
+        ./scripts/feeds install -a
+        
+        # 手动添加最新的 usteer
         rm -rf package/network/services/usteer
         git clone https://git.openwrt.org/project/usteer.git package/network/services/usteer
         
@@ -35,16 +38,23 @@ jobs:
         echo "CONFIG_TARGET_mediatek_filogic=y" >> .config
         echo "CONFIG_TARGET_mediatek_filogic_DEVICE_netcore_n60-pro=y" >> .config
         echo "CONFIG_PACKAGE_usteer=m" >> .config
+        echo "CONFIG_PACKAGE_luci-app-usteer=m" >> .config
+        echo "CONFIG_PACKAGE_luci-i18n-usteer-zh-cn=m" >> .config
         make defconfig
         
-    - name: Build usteer package
+    - name: Build all usteer packages
       run: |
         cd immortalwrt
         make package/network/services/usteer/compile -j2 V=s
+        make package/luci-app-usteer/compile -j2 V=s
+        make package/luci-i18n-usteer-zh-cn/compile -j2 V=s
         
     - name: Upload packages
       uses: actions/upload-artifact@v4
       with:
-        name: usteer-packages
-        path: immortalwrt/bin/packages/aarch64_cortex-a53/base/usteer*
+        name: usteer-complete-packages
+        path: |
+          immortalwrt/bin/packages/aarch64_cortex-a53/base/usteer*
+          immortalwrt/bin/packages/aarch64_cortex-a53/luci/luci-app-usteer*
+          immortalwrt/bin/packages/aarch64_cortex-a53/luci/luci-i18n-usteer-zh-cn*
         retention-days: 30
