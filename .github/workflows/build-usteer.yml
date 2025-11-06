@@ -1,4 +1,4 @@
-name: Build Latest usteer + LuCI for N60Pro
+name: Build Latest usteer + LuCI for N60Pro (ImmortalWrt 24.10.4)
 
 on:
   workflow_dispatch:
@@ -6,62 +6,66 @@ on:
 jobs:
   build:
     runs-on: ubuntu-22.04
+    env:
+      MAKEFLAGS: "-j$(nproc)"   # 多线程加速
 
     steps:
-      - name: Checkout repository
+      - name: Checkout ImmortalWrt
         uses: actions/checkout@v3
+        with:
+          repository: immortalwrt/immortalwrt
+          ref: v24.10.4
+          path: immortalwrt
 
-      - name: Install dependencies
+      - name: Install build dependencies
         run: |
           sudo apt update
-          sudo apt install -y build-essential libncurses5-dev gawk gettext unzip python3 wget git
-
-      - name: Download ImmortalWrt SDK
-        run: |
-          wget -O sdk.tar.xz https://mirrors.tuna.tsinghua.edu.cn/openwrt/releases/24.10.4/targets/mediatek/filogic/ImmortalWrt-SDK-24.10.4-mediatek-filogic_gcc-12.3.0_musl.Linux-x86_64.tar.xz
-          tar -xf sdk.tar.xz
-          SDK_DIR=$(find . -maxdepth 1 -type d -name "ImmortalWrt-SDK*")
-          echo "SDK_DIR=$SDK_DIR" >> $GITHUB_ENV
+          sudo apt install -y build-essential libncurses5-dev gawk gettext unzip python3 wget git subversion flex bison ccache
 
       - name: Update feeds
         run: |
-          cd $SDK_DIR
+          cd immortalwrt
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      - name: Replace usteer with newest source
+      - name: Replace usteer with latest source
         run: |
-          cd $SDK_DIR/package/network/services
+          cd immortalwrt/package/network/services
           rm -rf usteer
-          git clone https://git.openwrt.org/project/usteer.git usteer
+          git clone git://git.openwrt.org/project/usteer.git usteer
 
       - name: Replace luci-app-usteer (latest)
         run: |
-          cd $SDK_DIR/feeds/luci/applications
+          cd immortalwrt/feeds/luci/applications
           rm -rf luci-app-usteer
-          git clone https://github.com/openwrt/luci.git /tmp/luci-temp
-          mv /tmp/luci-temp/applications/luci-app-usteer .
-          rm -rf /tmp/luci-temp
+          git clone https://github.com/openwrt/luci.git luci-temp
+          mv luci-temp/applications/luci-app-usteer .
+          rm -rf luci-temp
 
-      - name: Build usteer + luci app + zh-cn language
+      - name: Configure build non-interactively
         run: |
-          cd $SDK_DIR
-          # 启用三个包
+          cd immortalwrt
+          # 确保 .config 文件存在
+          touch .config
+          # 启用 usteer 主程序、LuCI 和中文语言包
           echo "CONFIG_PACKAGE_usteer=y" >> .config
           echo "CONFIG_PACKAGE_luci-app-usteer=y" >> .config
           echo "CONFIG_PACKAGE_luci-i18n-usteer-zh-cn=y" >> .config
+          # 避免 menuconfig 交互错误
           make defconfig
-          # 编译
-          make package/usteer/compile -j$(nproc) V=s
-          make package/luci-app-usteer/compile -j$(nproc) V=s
-          make package/luci-i18n-usteer-zh-cn/compile -j$(nproc) V=s
+
+      - name: Compile packages
+        run: |
+          cd immortalwrt
+          make package/usteer/compile V=s
+          make package/luci-app-usteer/compile V=s
+          make package/luci-i18n-usteer-zh-cn/compile V=s
 
       - name: Upload IPK artifacts
         uses: actions/upload-artifact@v4
         with:
           name: usteer-ipk
           path: |
-            ${{ env.SDK_DIR }}/bin/packages/*/*/usteer_*.ipk
-            ${{ env.SDK_DIR }}/bin/packages/*/*/luci-app-usteer_*.ipk
-            ${{ env.SDK_DIR }}/bin/packages/*/*/luci-i18n-usteer-zh-cn_*.ipk
-          retention-days: 7
+            immortalwrt/bin/packages/*/*/usteer*.ipk
+            immortalwrt/bin/packages/*/*/luci-app-usteer*.ipk
+            immortalwrt/bin/packages/*/*/luci-i18n-usteer-zh-cn*.ipk
