@@ -1,4 +1,4 @@
-name: Build uSteer with OpenWrt SDK
+name: Build uSteer with ImmortalWrt SDK
 
 on:
   workflow_dispatch:
@@ -16,18 +16,19 @@ jobs:
         
     - name: Download ImmortalWrt SDK
       run: |
-        # 下载 ImmortalWrt 24.10.4 的 SDK
+        # 下载 ImmortalWrt 24.10.4 SDK
         wget https://downloads.immortalwrt.org/releases/24.10.4/targets/mediatek/filogic/immortalwrt-sdk-24.10.4-mediatek-filogic_gcc-12.3.0_musl.Linux-x86_64.tar.xz
-        tar -xf immortalwrt-sdk-24.10.4-mediatek-filogic_gcc-12.3.0_musl.Linux-x86_64.tar.xz
+        tar -xf immortalwrt-sdk-*.tar.xz
         mv immortalwrt-sdk-*-Linux-x86_64 immortalwrt-sdk
         
     - name: Build usteer package
       run: |
-        # 复制 usteer 源码到 SDK 包目录
+        # 复制 usteer 源码到 SDK
+        rm -rf immortalwrt-sdk/package/network/services/usteer
         cp -r usteer-source immortalwrt-sdk/package/network/services/usteer
         
         cd immortalwrt-sdk
-        # 更新 feeds 确保依赖正确
+        # 更新 feeds
         ./scripts/feeds update -a
         
         # 编译 usteer
