@@ -1,0 +1,42 @@
+name: Build uSteer with OpenWrt SDK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    
+    steps:
+    - name: Checkout usteer source
+      run: |
+        git clone https://git.openwrt.org/project/usteer.git usteer-source
+        
+    - name: Download ImmortalWrt SDK
+      run: |
+        # 下载 ImmortalWrt 24.10.4 的 SDK
+        wget https://downloads.immortalwrt.org/releases/24.10.4/targets/mediatek/filogic/immortalwrt-sdk-24.10.4-mediatek-filogic_gcc-12.3.0_musl.Linux-x86_64.tar.xz
+        tar -xf immortalwrt-sdk-24.10.4-mediatek-filogic_gcc-12.3.0_musl.Linux-x86_64.tar.xz
+        mv immortalwrt-sdk-*-Linux-x86_64 immortalwrt-sdk
+        
+    - name: Build usteer package
+      run: |
+        # 复制 usteer 源码到 SDK 包目录
+        cp -r usteer-source immortalwrt-sdk/package/network/services/usteer
+        
+        cd immortalwrt-sdk
+        # 更新 feeds 确保依赖正确
+        ./scripts/feeds update -a
+        
+        # 编译 usteer
+        make package/network/services/usteer/compile V=s
+        
+    - name: Upload built packages
+      uses: actions/upload-artifact@v4
+      with:
+        name: usteer-packages
+        path: |
+          immortalwrt-sdk/bin/packages/aarch64_cortex-a53/base/usteer*
+        retention-days: 30
