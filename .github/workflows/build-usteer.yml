@@ -48,10 +48,11 @@ jobs:
           make -j$(nproc) package/usteer/{compile,install} V=s
 
       - name: Upload IPK artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: usteer-ipk
           path: |
             immortalwrt/bin/packages/*/base/usteer_*.ipk
             immortalwrt/bin/packages/*/luci/luci-app-usteer_*.ipk
             immortalwrt/bin/packages/*/luci/luci-i18n-usteer-zh-cn_*.ipk
+          retention-days: 7
