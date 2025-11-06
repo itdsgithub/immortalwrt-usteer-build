@@ -1,4 +1,4 @@
-name: Build usteer for ImmortalWrt
+name: Build usteer for ImmortalWrt 24.10.4
 
 on:
   workflow_dispatch:
@@ -10,10 +10,11 @@ jobs:
       TARGET: "aarch64_cortex-a53"   # N60 Pro CPU 架构
       PROFILE: "mt7986"              # 路由器型号
     steps:
-      - name: Checkout ImmortalWrt
+      - name: Checkout ImmortalWrt 24.10.4
         uses: actions/checkout@v3
         with:
-          repository: https://github.com/immortalwrt/immortalwrt.git
+          repository: immortalwrt/immortalwrt
+          ref: v24.10.4  # 固定分支
           path: immortalwrt
 
       - name: Setup dependencies
@@ -35,7 +36,7 @@ jobs:
       - name: Configure build
         run: |
           cd immortalwrt
-          # 清空上次配置
+          # 使用默认配置
           make defconfig
           # 启用 usteer 主程序、LuCI 和中文语言包
           echo "CONFIG_PACKAGE_usteer=y" >> .config
