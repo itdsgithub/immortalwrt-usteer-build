@@ -14,11 +14,25 @@ jobs:
       run: |
         git clone https://git.openwrt.org/project/usteer.git usteer-source
         
-    - name: Download ImmortalWrt SDK
+    - name: Find and Download SDK
       run: |
-        # 下载 ImmortalWrt 24.10.4 SDK
-        wget https://downloads.immortalwrt.org/releases/24.10.4/targets/mediatek/filogic/immortalwrt-sdk-24.10.4-mediatek-filogic_gcc-12.3.0_musl.Linux-x86_64.tar.xz
-        tar -xf immortalwrt-sdk-*.tar.xz
+        # 获取可用的 SDK 文件列表
+        SDK_FILES=$(curl -s https://downloads.immortalwrt.org/releases/24.10.4/targets/mediatek/filogic/ | grep -o 'href="[^"]*tar.xz"' | sed 's/href="//' | sed 's/"//')
+        
+        if [ -z "$SDK_FILES" ]; then
+          echo "错误：找不到 SDK 文件"
+          exit 1
+        fi
+        
+        # 选择第一个找到的 SDK 文件
+        SDK_FILE=$(echo "$SDK_FILES" | head -1)
+        echo "找到 SDK 文件: $SDK_FILE"
+        
+        # 下载 SDK
+        wget "https://downloads.immortalwrt.org/releases/24.10.4/targets/mediatek/filogic/$SDK_FILE"
+        
+        # 解压 SDK
+        tar -xf *.tar.xz
         mv immortalwrt-sdk-*-Linux-x86_64 immortalwrt-sdk
         
     - name: Build usteer package
