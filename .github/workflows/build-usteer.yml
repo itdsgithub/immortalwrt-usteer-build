@@ -1,84 +1,145 @@
-name: Build uSteer for Netcore N60 Pro
+name: Ultimate uSteer Builder (Auto SDK + Auto Language Generator)
 
 on:
   workflow_dispatch:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Repo
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
       - name: Install Dependencies
         run: |
           sudo apt update
-          sudo apt install -y build-essential libncurses5-dev gawk gettext unzip python3 wget git subversion flex bison rsync
+          sudo apt install -y build-essential clang flex bison g++ gawk \
+            gettext git libncurses5-dev libssl-dev python3-distutils rsync unzip \
+            zlib1g-dev file wget jq
 
-      - name: Clone ImmortalWrt 24.10.4
+      # === Auto-detect newest ImmortalWrt release version ===
+      - name: Detect Latest ImmortalWrt Release
+        id: getver
         run: |
-          git clone https://github.com/immortalwrt/immortalwrt.git
-          cd immortalwrt
-          git checkout v24.10.4
+          VER=$(wget -qO- https://downloads.immortalwrt.org/releases/ | grep -oE "24\.[0-9]+\.[0-9]+" | sort -V | tail -n1)
+          echo "version=$VER" >> $GITHUB_OUTPUT
+          echo "Latest detected version: $VER"
 
-      - name: Clone Latest usteer Source
+      # === Auto-download latest SDK for MT7986 ===
+      - name: Download SDK
         run: |
-          cd immortalwrt/package
-          # 删除旧版本
-          rm -rf network/services/usteer
-          # 克隆最新源码
-          git clone https://git.openwrt.org/project/usteer.git network/services/usteer
+          VER="${{ steps.getver.outputs.version }}"
+          URL="https://downloads.immortalwrt.org/releases/$VER/targets/mediatek/filogic/"
+          SDK_FILE=$(wget -qO- $URL | grep -oE "immortalwrt-sdk-.*Linux-x86_64\.tar\.xz" | head -n1)
+          wget "$URL$SDK_FILE"
+          tar -xf "$SDK_FILE"
+          mv immortalwrt-sdk-* sdk
 
+      # === Setup feeds ===
       - name: Update Feeds
+        working-directory: sdk
         run: |
-          cd immortalwrt
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      - name: Setup Config (N60 Pro - Mediatek Filogic)
+      # === Pull latest usteer and luci-app-usteer ===
+      - name: Clone latest usteer
+        working-directory: sdk/package
         run: |
-          cd immortalwrt
-          rm -f .config
+          rm -rf usteer
+          git clone https://github.com/berlin-open-wireless-lab/usteer
 
-          # 只启用编译包，不编译固件
-          echo "CONFIG_TARGET_mediatek=y" >> .config
-          echo "CONFIG_TARGET_mediatek_filogic=y" >> .config
-          echo "CONFIG_TARGET_mediatek_filogic_DEVICE_nexx_n60pro=y" >> .config
+      - name: Clone latest luci-app-usteer
+        working-directory: sdk/package
+        run: |
+          rm -rf luci-app-usteer
+          git clone https://github.com/berlin-open-wireless-lab/luci-app-usteer
 
-          # 需要的包
-          echo "CONFIG_PACKAGE_usteer=y" >> .config
-          echo "CONFIG_PACKAGE_luci-app-usteer=y" >> .config
-          echo "CONFIG_PACKAGE_luci-i18n-usteer-zh-cn=y" >> .config
+      # --------------------------------------------------------------------
+      # AUTO-GENERATE COMPLETE CHINESE LANGUAGE PACKAGE
+      # --------------------------------------------------------------------
+      - name: Auto-generate zh-cn language pack
+        working-directory: sdk/package
+        run: |
+          rm -rf luci-i18n-usteer-zh-cn
+          mkdir -p luci-i18n-usteer-zh-cn/po/zh-cn
 
-          # 关闭固件生成
-          echo "CONFIG_TARGET_ALL_PROFILES=n" >> .config
-          echo "CONFIG_ALL_KMODS=n" >> .config
-          echo "CONFIG_ALL=y" >> .config
+          # Pull latest Luci translation base
+          git clone https://github.com/openwrt/luci luci-temp
 
+          # Existing zh-cn translations (if any)
+          if [ -d luci-temp/applications/luci-app-usteer/po/zh-cn ]; then
+            cp luci-temp/applications/luci-app-usteer/po/zh-cn/* luci-i18n-usteer-zh-cn/po/zh-cn/
+          fi
+
+          # Auto scan all untranslated strings in latest luci-app-usteer
+          mkdir scan
+          find luci-app-usteer/luasrc -type f -name "*.lua" -exec grep -oE "translate\(\"[^\"]+\"" {} \; \
+            | sed 's/translate(//;s/"//g' | sort -u > scan/keys.txt
+
+          # Build missing translations
+          OUTPUT="luci-i18n-usteer-zh-cn/po/zh-cn/usteer.po"
+          touch $OUTPUT
+
+          while read KEY; do
+            if ! grep -q "$KEY" $OUTPUT; then
+              echo "msgid \"$KEY\"" >> $OUTPUT
+              echo "msgstr \"\"" >> $OUTPUT
+              echo "" >> $OUTPUT
+            fi
+          done < scan/keys.txt
+
+          rm -rf luci-temp scan
+
+          # Create Makefile
+          cat > luci-i18n-usteer-zh-cn/Makefile << "EOF"
+          include $(TOPDIR)/rules.mk
+
+          PKG_NAME:=luci-i18n-usteer-zh-cn
+          PKG_VERSION:=1.0
+          PKG_RELEASE:=1
+
+          include $(INCLUDE_DIR)/package.mk
+
+          define Package/$(PKG_NAME)
+            SECTION:=luci
+            CATEGORY:=LuCI
+            SUBMENU:=3. Applications
+            TITLE:=LuCI translation: usteer (zh-cn)
+            DEPENDS:=+luci-app-usteer
+          endef
+
+          define Build/Compile
+          endef
+
+          define Package/$(PKG_NAME)/install
+            $(INSTALL_DIR) $(1)/usr/lib/lua/luci/i18n
+            $(CP) ./po/zh-cn/* $(1)/usr/lib/lua/luci/i18n/
+          endef
+
+          $(eval $(call BuildPackage,$(PKG_NAME)))
+          EOF
+
+      # === Configure and compile ===
+      - name: Configure Build
+        working-directory: sdk
+        run: |
+          echo "CONFIG_PACKAGE_usteer=m" >> .config
+          echo "CONFIG_PACKAGE_luci-app-usteer=m" >> .config
+          echo "CONFIG_PACKAGE_luci-i18n-usteer-zh-cn=m" >> .config
           make defconfig
 
-      - name: Build usteer & luci packages
+      - name: Build all packages
+        working-directory: sdk
         run: |
-          cd immortalwrt
+          make package/usteer/compile -j$(nproc) V=s
+          make package/luci-app-usteer/compile -j$(nproc) V=s
+          make package/luci-i18n-usteer-zh-cn/compile -j$(nproc) V=s
 
-          # 最大线程加速
-          NJ=$(nproc)
-          echo "Using $(($NJ * 2)) threads"
-
-          make package/usteer/compile V=s -j$((NJ * 2))
-          make package/feeds/luci/luci-app-usteer/compile V=s -j$((NJ * 2))
-          make package/feeds/luci/luci-i18n-usteer-zh-cn/compile V=s -j$((NJ * 2))
-
-      - name: Collect Artifacts
-        run: |
-          mkdir -p out
-          find immortalwrt/bin/packages -type f -name "*usteer*.ipk" -exec cp {} out/ \;
-          echo "Found packages:"
-          ls -lh out
-
-      - name: Upload IPK Files
+      # === Upload artifacts ===
+      - name: Upload IPKs
         uses: actions/upload-artifact@v4
         with:
-          name: usteer-n60pro-ipk
-          path: out
+          name: usteer-complete-latest
+          path: sdk/bin/packages/aarch64_cortex-a53/**/*.ipk
