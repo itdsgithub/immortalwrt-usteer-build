@@ -42,7 +42,7 @@ jobs:
 
     - name: Prepare SDK for build
       run: |
-        cd $SDK_DIR
+        cd ${{ env.SDK_DIR }}
         ./scripts/feeds update -a
         ./scripts/feeds install -a
         rm -rf package/network/services/usteer
@@ -59,7 +59,7 @@ EOF
 
     - name: Compile uSteer packages
       run: |
-        cd $SDK_DIR
+        cd ${{ env.SDK_DIR }}
         # 编译主程序
         make package/network/services/usteer/compile V=s
         # 编译 LuCI 界面
@@ -71,4 +71,4 @@ EOF
       uses: actions/upload-artifact@v4
       with:
         name: usteer-ipk-files
-        path: $SDK_DIR/bin/packages/**/*usteer*.ipk
+        path: ${{ env.SDK_DIR }}/bin/packages/**/*usteer*.ipk
