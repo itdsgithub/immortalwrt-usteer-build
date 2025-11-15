@@ -1,4 +1,4 @@
-name: Build Latest usteer for N60Pro
+name: Build uSteer Auto
 
 on:
   workflow_dispatch:
@@ -9,53 +9,36 @@ jobs:
     
     steps:
     - name: Checkout ImmortalWrt
-      uses: actions/checkout@v4
-      with:
-        repository: immortalwrt/immortalwrt
-        ref: v24.10.4
-        path: immortalwrt
+      run: |
+        git clone https://github.com/immortalwrt/immortalwrt.git
+        cd immortalwrt
+        git checkout v24.10.4
 
-    - name: Install build dependencies
+    - name: Install dependencies
       run: |
         sudo apt update
-        sudo apt install -y build-essential libncurses5-dev gawk gettext unzip python3 wget git subversion flex bison ccache
+        sudo apt install -y build-essential libncurses5-dev gawk gettext unzip python3 wget git subversion flex bison
 
-    - name: Update feeds
+    - name: Setup and build
       run: |
         cd immortalwrt
         ./scripts/feeds update -a
         ./scripts/feeds install -a
-
-    - name: Replace usteer with latest source
-      run: |
-        cd immortalwrt
         rm -rf package/network/services/usteer
-        rm -rf feeds/packages/network/usteer
         git clone https://git.openwrt.org/project/usteer.git package/network/services/usteer
-
-    - name: Configure build
-      run: |
-        cd immortalwrt
-        cat > .config << 'EOF'
-CONFIG_TARGET_mediatek=y
-CONFIG_TARGET_mediatek_filogic=y
-CONFIG_TARGET_mediatek_filogic_DEVICE_nexx_n60pro=y
-CONFIG_PACKAGE_usteer=y
-CONFIG_PACKAGE_luci-app-usteer=y
-CONFIG_PACKAGE_luci-i18n-usteer-zh-cn=y
-CONFIG_PACKAGE_luci-compat=y
-EOF
+        
+        echo "CONFIG_TARGET_mediatek_filogic_DEVICE_nexx_n60pro=y" > .config
+        echo "CONFIG_PACKAGE_usteer=y" >> .config
+        echo "CONFIG_PACKAGE_luci-app-usteer=y" >> .config  
+        echo "CONFIG_PACKAGE_luci-i18n-usteer-zh-cn=y" >> .config
+        
         make defconfig
-
-    - name: Compile packages
-      run: |
-        cd immortalwrt
         make package/network/services/usteer/compile V=s
         make package/feeds/luci/luci-app-usteer/compile V=s
         make package/feeds/luci/luci-i18n-usteer-zh-cn/compile V=s
 
-    - name: Upload packages
+    - name: Upload results
       uses: actions/upload-artifact@v4
       with:
-        name: usteer-packages
+        name: usteer-files
         path: immortalwrt/bin/packages/**/*usteer*.ipk
