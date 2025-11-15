@@ -1,4 +1,4 @@
-name: Build uSteer Auto
+name: Build uSteer for Netcore N60 Pro
 
 on:
   workflow_dispatch:
@@ -6,39 +6,79 @@ on:
 jobs:
   build:
     runs-on: ubuntu-22.04
-    
+
     steps:
-    - name: Checkout ImmortalWrt
-      run: |
-        git clone https://github.com/immortalwrt/immortalwrt.git
-        cd immortalwrt
-        git checkout v24.10.4
+      - name: Checkout Repo
+        uses: actions/checkout@v4
 
-    - name: Install dependencies
-      run: |
-        sudo apt update
-        sudo apt install -y build-essential libncurses5-dev gawk gettext unzip python3 wget git subversion flex bison
+      - name: Install Dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y build-essential libncurses5-dev gawk gettext unzip python3 wget git subversion flex bison rsync
 
-    - name: Setup and build
-      run: |
-        cd immortalwrt
-        ./scripts/feeds update -a
-        ./scripts/feeds install -a
-        rm -rf package/network/services/usteer
-        git clone https://git.openwrt.org/project/usteer.git package/network/services/usteer
-        
-        echo "CONFIG_TARGET_mediatek_filogic_DEVICE_nexx_n60pro=y" > .config
-        echo "CONFIG_PACKAGE_usteer=y" >> .config
-        echo "CONFIG_PACKAGE_luci-app-usteer=y" >> .config  
-        echo "CONFIG_PACKAGE_luci-i18n-usteer-zh-cn=y" >> .config
-        
-        make defconfig
-        make package/network/services/usteer/compile V=s
-        make package/feeds/luci/luci-app-usteer/compile V=s
-        make package/feeds/luci/luci-i18n-usteer-zh-cn/compile V=s
+      - name: Clone ImmortalWrt 24.10.4
+        run: |
+          git clone https://github.com/immortalwrt/immortalwrt.git
+          cd immortalwrt
+          git checkout v24.10.4
 
-    - name: Upload results
-      uses: actions/upload-artifact@v4
-      with:
-        name: usteer-files
-        path: immortalwrt/bin/packages/**/*usteer*.ipk
+      - name: Clone Latest usteer Source
+        run: |
+          cd immortalwrt/package
+          # 删除旧版本
+          rm -rf network/services/usteer
+          # 克隆最新源码
+          git clone https://git.openwrt.org/project/usteer.git network/services/usteer
+
+      - name: Update Feeds
+        run: |
+          cd immortalwrt
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+      - name: Setup Config (N60 Pro - Mediatek Filogic)
+        run: |
+          cd immortalwrt
+          rm -f .config
+
+          # 只启用编译包，不编译固件
+          echo "CONFIG_TARGET_mediatek=y" >> .config
+          echo "CONFIG_TARGET_mediatek_filogic=y" >> .config
+          echo "CONFIG_TARGET_mediatek_filogic_DEVICE_nexx_n60pro=y" >> .config
+
+          # 需要的包
+          echo "CONFIG_PACKAGE_usteer=y" >> .config
+          echo "CONFIG_PACKAGE_luci-app-usteer=y" >> .config
+          echo "CONFIG_PACKAGE_luci-i18n-usteer-zh-cn=y" >> .config
+
+          # 关闭固件生成
+          echo "CONFIG_TARGET_ALL_PROFILES=n" >> .config
+          echo "CONFIG_ALL_KMODS=n" >> .config
+          echo "CONFIG_ALL=y" >> .config
+
+          make defconfig
+
+      - name: Build usteer & luci packages
+        run: |
+          cd immortalwrt
+
+          # 最大线程加速
+          NJ=$(nproc)
+          echo "Using $(($NJ * 2)) threads"
+
+          make package/usteer/compile V=s -j$((NJ * 2))
+          make package/feeds/luci/luci-app-usteer/compile V=s -j$((NJ * 2))
+          make package/feeds/luci/luci-i18n-usteer-zh-cn/compile V=s -j$((NJ * 2))
+
+      - name: Collect Artifacts
+        run: |
+          mkdir -p out
+          find immortalwrt/bin/packages -type f -name "*usteer*.ipk" -exec cp {} out/ \;
+          echo "Found packages:"
+          ls -lh out
+
+      - name: Upload IPK Files
+        uses: actions/upload-artifact@v4
+        with:
+          name: usteer-n60pro-ipk
+          path: out
