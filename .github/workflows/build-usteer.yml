@@ -11,64 +11,60 @@ jobs:
       IMMORTALWRT_HOME: ${{ github.workspace }}/immortalwrt
 
     steps:
-    - name: Checkout workspace
-      run: |
-        mkdir -p $IMMORTALWRT_HOME
+      - name: Checkout workspace
+        run: |
+          mkdir -p $IMMORTALWRT_HOME
 
-    - name: Install system dependencies
-      run: |
-        sudo apt update
-        sudo apt install -y build-essential libncurses5-dev gawk gettext unzip \
-          python3 python3-setuptools git subversion flex bison wget xz-utils
+      - name: Install system dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y build-essential libncurses5-dev gawk gettext unzip \
+            python3 python3-setuptools git subversion flex bison wget xz-utils
 
-    - name: Download latest ImmortalWrt SDK for MT7986/Filogic
-      run: |
-        cd $IMMORTALWRT_HOME
-        SDK_PAGE=$(wget -qO- https://downloads.openwrt.org/releases/24.10.4/targets/mediatek/filogic/)
-        SDK_FILE=$(echo "$SDK_PAGE" | grep -oP 'openwrt-sdk.*_mediatek-filogic.*\.Linux-x86_64\.tar\.xz' | head -n1)
-        echo "Downloading SDK: $SDK_FILE"
-        wget -q https://downloads.openwrt.org/releases/24.10.4/targets/mediatek/filogic/$SDK_FILE
-        tar -xf $SDK_FILE
-        SDK_DIR=$(ls -d openwrt-sdk*)
-        echo "SDK_DIR=$IMMORTALWRT_HOME/$SDK_DIR" >> $GITHUB_ENV
+      - name: Download latest ImmortalWrt SDK for MT7986/Filogic
+        run: |
+          cd $IMMORTALWRT_HOME
+          SDK_PAGE=$(wget -qO- https://downloads.openwrt.org/releases/24.10.4/targets/mediatek/filogic/)
+          SDK_FILE=$(echo "$SDK_PAGE" | grep -oP 'openwrt-sdk.*_mediatek-filogic.*\.Linux-x86_64\.tar\.xz' | head -n1)
+          echo "Downloading SDK: $SDK_FILE"
+          wget -q https://downloads.openwrt.org/releases/24.10.4/targets/mediatek/filogic/$SDK_FILE
+          tar -xf $SDK_FILE
+          SDK_DIR=$(ls -d openwrt-sdk*)
+          echo "SDK_DIR=$IMMORTALWRT_HOME/$SDK_DIR" >> $GITHUB_ENV
 
-    - name: Clone latest uSteer source
-      run: |
-        cd $IMMORTALWRT_HOME
-        rm -rf usteer
-        git clone https://git.openwrt.org/project/usteer.git
-        cd usteer
-        git checkout main  # 最新主分支
+      - name: Clone latest uSteer source
+        run: |
+          cd $IMMORTALWRT_HOME
+          rm -rf usteer
+          git clone https://git.openwrt.org/project/usteer.git
+          cd usteer
+          git checkout main
 
-    - name: Prepare SDK for build
-      run: |
-        cd ${{ env.SDK_DIR }}
-        ./scripts/feeds update -a
-        ./scripts/feeds install -a
-        rm -rf package/network/services/usteer
-        cp -r $IMMORTALWRT_HOME/usteer package/network/services/usteer
+      - name: Prepare SDK for build
+        run: |
+          cd ${{ env.SDK_DIR }}
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+          rm -rf package/network/services/usteer
+          cp -r $IMMORTALWRT_HOME/usteer package/network/services/usteer
 
-        # 自动生成配置
-        cat > .config <<EOF
+          cat > .config <<EOF
 CONFIG_TARGET_mediatek_filogic_DEVICE_nexx_n60pro=y
 CONFIG_PACKAGE_usteer=y
 CONFIG_PACKAGE_luci-app-usteer=y
 CONFIG_PACKAGE_luci-i18n-usteer-zh-cn=y
 EOF
-        make defconfig
+          make defconfig
 
-    - name: Compile uSteer packages
-      run: |
-        cd ${{ env.SDK_DIR }}
-        # 编译主程序
-        make package/network/services/usteer/compile V=s
-        # 编译 LuCI 界面
-        make package/feeds/luci/luci-app-usteer/compile V=s
-        # 编译中文语言包，自动扫描源码缺失字段并补齐
-        make package/feeds/luci/luci-i18n-usteer-zh-cn/compile V=s
+      - name: Compile uSteer packages
+        run: |
+          cd ${{ env.SDK_DIR }}
+          make package/network/services/usteer/compile V=s
+          make package/feeds/luci/luci-app-usteer/compile V=s
+          make package/feeds/luci/luci-i18n-usteer-zh-cn/compile V=s
 
-    - name: Upload generated IPK files
-      uses: actions/upload-artifact@v4
-      with:
-        name: usteer-ipk-files
-        path: ${{ env.SDK_DIR }}/bin/packages
+      - name: Upload generated IPK files
+        uses: actions/upload-artifact@v4
+        with:
+          name: usteer-ipk-files
+          path: ${{ env.SDK_DIR }}/bin/packages
