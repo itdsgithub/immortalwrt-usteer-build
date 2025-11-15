@@ -1,4 +1,4 @@
-name: Build Latest usteer + LuCI for N60Pro (ImmortalWrt 24.10.4)
+name: Build Latest usteer for N60Pro
 
 on:
   workflow_dispatch:
@@ -6,131 +6,56 @@ on:
 jobs:
   build:
     runs-on: ubuntu-22.04
-    env:
-      MAKEFLAGS: "-j$(nproc)"   # 多线程加速
-
+    
     steps:
-      - name: Checkout ImmortalWrt
-        uses: actions/checkout@v4
-        with:
-          repository: immortalwrt/immortalwrt
-          ref: v24.10.4
-          path: immortalwrt
+    - name: Checkout ImmortalWrt
+      uses: actions/checkout@v4
+      with:
+        repository: immortalwrt/immortalwrt
+        ref: v24.10.4
+        path: immortalwrt
 
-      - name: Install build dependencies
-        run: |
-          sudo apt update
-          sudo apt install -y build-essential libncurses5-dev gawk gettext unzip python3 wgit subversion flex bison ccache
+    - name: Install build dependencies
+      run: |
+        sudo apt update
+        sudo apt install -y build-essential libncurses5-dev gawk gettext unzip python3 wget git subversion flex bison ccache
 
-      - name: Update feeds and install packages
-        run: |
-          cd immortalwrt
-          ./scripts/feeds update -a
-          ./scripts/feeds install -a
+    - name: Update feeds
+      run: |
+        cd immortalwrt
+        ./scripts/feeds update -a
+        ./scripts/feeds install -a
 
-      - name: Replace usteer with latest source
-        run: |
-          cd immortalwrt
-          # 删除可能存在的旧版本
-          rm -rf package/network/services/usteer
-          rm -rf feeds/packages/network/usteer
-          # 克隆最新 usteer 主程序
-          git clone https://git.openwrt.org/project/usteer.git package/network/services/usteer
+    - name: Replace usteer with latest source
+      run: |
+        cd immortalwrt
+        rm -rf package/network/services/usteer
+        rm -rf feeds/packages/network/usteer
+        git clone https://git.openwrt.org/project/usteer.git package/network/services/usteer
 
-      - name: Replace luci-app-usteer with latest
-        run: |
-          cd immortalwrt
-          # 删除旧版 LuCI 界面
-          rm -rf feeds/luci/applications/luci-app-usteer
-          rm -rf package/feeds/luci/luci-app-usteer
-          # 克隆最新 LuCI 界面
-          git clone https://git.openwrt.org/project/luci/applications/luci-app-usteer.git package/feeds/luci/luci-app-usteer
-
-      - name: Configure build for N60Pro
-        run: |
-          cd immortalwrt
-          # 设置目标设备
-          cat > .config << 'EOF'
+    - name: Configure build
+      run: |
+        cd immortalwrt
+        cat > .config << 'EOF'
 CONFIG_TARGET_mediatek=y
 CONFIG_TARGET_mediatek_filogic=y
 CONFIG_TARGET_mediatek_filogic_DEVICE_nexx_n60pro=y
-
-# uSteer 组件
 CONFIG_PACKAGE_usteer=y
 CONFIG_PACKAGE_luci-app-usteer=y
 CONFIG_PACKAGE_luci-i18n-usteer-zh-cn=y
-
-# 必要的依赖
 CONFIG_PACKAGE_luci-compat=y
-CONFIG_PACKAGE_luci-lib-base=y
-CONFIG_PACKAGE_luci-lib-ipkg=y
-CONFIG_PACKAGE_libubox=y
-CONFIG_PACKAGE_libblobmsg-json=y
-CONFIG_PACKAGE_libjson-c=y
-CONFIG_PACKAGE_libuclient=y
 EOF
-          # 应用配置并解决依赖
-          make defconfig
+        make defconfig
 
-      - name: Compile usteer packages
-        run: |
-          cd immortalwrt
-          echo "开始编译 usteer 主程序..."
-          make package/network/services/usteer/compile V=s
-          echo "开始编译 luci-app-usteer..."
-          make package/feeds/luci/luci-app-usteer/compile V=s
-          echo "开始编译中文语言包..."
-          make package/feeds/luci/luci-i18n-usteer-zh-cn/compile V=s
+    - name: Compile packages
+      run: |
+        cd immortalwrt
+        make package/network/services/usteer/compile V=s
+        make package/feeds/luci/luci-app-usteer/compile V=s
+        make package/feeds/luci/luci-i18n-usteer-zh-cn/compile V=s
 
-      - name: Find and list compiled packages
-        run: |
-          cd immortalwrt
-          echo "编译完成的包:"
-          find bin -name "*usteer*.ipk" -type f | while read file; do
-            echo "✅ $file"
-            ls -lh "$file"
-          done
-
-      - name: Upload IPK artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: usteer-latest-n60pro
-          path: |
-            immortalwrt/bin/packages/*/*/*usteer*.ipk
-          retention-days: 7
-
-      - name: Create auto-install script
-        run: |
-          cat > install-usteer.sh << 'EOF'
-#!/bin/sh
-echo "=== uSteer 自动安装脚本 ==="
-echo "请确保所有 .ipk 文件已上传到 /tmp 目录"
-cd /tmp
-
-# 安装主程序
-echo "1. 安装 usteer 主程序..."
-opkg install usteer_*.ipk
-
-# 安装 LuCI 界面
-echo "2. 安装 LuCI 界面..."
-opkg install luci-app-usteer_*.ipk
-
-# 安装中文语言包
-echo "3. 安装中文语言包..."
-opkg install luci-i18n-usteer-zh-cn_*.ipk
-
-# 启用服务
-echo "4. 启用 usteer 服务..."
-/etc/init.d/usteer enable
-/etc/init.d/usteer start
-
-echo "=== 安装完成！ ==="
-echo "请在 LuCI 界面 -> 服务 -> uSteer 中配置"
-EOF
-          mv install-usteer.sh immortalwrt/
-
-      - name: Upload installation helper
-        uses: actions/upload-artifact@v4
-        with:
-          name: installation-files
-          path: immortalwrt/install-usteer.sh
+    - name: Upload packages
+      uses: actions/upload-artifact@v4
+      with:
+        name: usteer-packages
+        path: immortalwrt/bin/packages/**/*usteer*.ipk
