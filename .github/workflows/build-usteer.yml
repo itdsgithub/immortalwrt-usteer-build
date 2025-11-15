@@ -71,4 +71,4 @@ EOF
       uses: actions/upload-artifact@v4
       with:
         name: usteer-ipk-files
-        path: ${{ env.SDK_DIR }}/bin/packages/**/*usteer*.ipk
+        path: ${{ env.SDK_DIR }}/bin/packages
