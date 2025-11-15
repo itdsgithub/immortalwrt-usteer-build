@@ -7,13 +7,11 @@ jobs:
   build:
     runs-on: ubuntu-22.04
 
-    env:
-      IMMORTALWRT_HOME: ${{ github.workspace }}/immortalwrt
-
     steps:
       - name: Checkout workspace
         run: |
-          mkdir -p $IMMORTALWRT_HOME
+          mkdir -p $HOME/immortalwrt
+          cd $HOME/immortalwrt
 
       - name: Install system dependencies
         run: |
@@ -23,18 +21,18 @@ jobs:
 
       - name: Download latest ImmortalWrt SDK for MT7986/Filogic
         run: |
-          cd $IMMORTALWRT_HOME
+          cd $HOME/immortalwrt
           SDK_PAGE=$(wget -qO- https://downloads.openwrt.org/releases/24.10.4/targets/mediatek/filogic/)
           SDK_FILE=$(echo "$SDK_PAGE" | grep -oP 'openwrt-sdk.*_mediatek-filogic.*\.Linux-x86_64\.tar\.xz' | head -n1)
           echo "Downloading SDK: $SDK_FILE"
           wget -q https://downloads.openwrt.org/releases/24.10.4/targets/mediatek/filogic/$SDK_FILE
           tar -xf $SDK_FILE
           SDK_DIR=$(ls -d openwrt-sdk*)
-          echo "SDK_DIR=$IMMORTALWRT_HOME/$SDK_DIR" >> $GITHUB_ENV
+          echo "SDK_DIR=$HOME/immortalwrt/$SDK_DIR" >> $GITHUB_ENV
 
       - name: Clone latest uSteer source
         run: |
-          cd $IMMORTALWRT_HOME
+          cd $HOME/immortalwrt
           rm -rf usteer
           git clone https://git.openwrt.org/project/usteer.git
           cd usteer
@@ -42,11 +40,11 @@ jobs:
 
       - name: Prepare SDK for build
         run: |
-          cd ${{ env.SDK_DIR }}
+          cd $HOME/immortalwrt/$SDK_DIR
           ./scripts/feeds update -a
           ./scripts/feeds install -a
           rm -rf package/network/services/usteer
-          cp -r $IMMORTALWRT_HOME/usteer package/network/services/usteer
+          cp -r $HOME/immortalwrt/usteer package/network/services/usteer
 
           cat > .config <<EOF
 CONFIG_TARGET_mediatek_filogic_DEVICE_nexx_n60pro=y
@@ -58,7 +56,7 @@ EOF
 
       - name: Compile uSteer packages
         run: |
-          cd ${{ env.SDK_DIR }}
+          cd $HOME/immortalwrt/$SDK_DIR
           make package/network/services/usteer/compile V=s
           make package/feeds/luci/luci-app-usteer/compile V=s
           make package/feeds/luci/luci-i18n-usteer-zh-cn/compile V=s
@@ -67,4 +65,4 @@ EOF
         uses: actions/upload-artifact@v4
         with:
           name: usteer-ipk-files
-          path: ${{ env.SDK_DIR }}/bin/packages
+          path: $HOME/immortalwrt/$SDK_DIR/bin/packages
